@@ -4,7 +4,9 @@ import logging
 import asyncpg
 from tornado.httpserver import HTTPServer
 from tornado.options import define, options, parse_command_line
-from tornado.web import Application
+from tornado.web import Application, RedirectHandler
+
+from guestbook import EntryRepository, GuestbookHandler
 
 define("port", default=8080, help="port to listen on")
 define("pgurl", default='postgres://postgres:@localhost:5432/postgres', help="PostgreSQL URL")
@@ -12,7 +14,11 @@ define("pgurl", default='postgres://postgres:@localhost:5432/postgres', help="Po
 
 async def main():
     pool = await asyncpg.create_pool(options.pgurl)
-    app = Application()
+    repo = EntryRepository(pool)
+    app = Application([
+        (r"/", RedirectHandler, {'url': '/guestbook'}),
+        (r"/guestbook", GuestbookHandler, {'repo': repo})
+    ], static_path='assets', template_path='templates')
     server = HTTPServer(app)
     logging.info('Start listening on port %d', options.port)
     server.listen(options.port)
