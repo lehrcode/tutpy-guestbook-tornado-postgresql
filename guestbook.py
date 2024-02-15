@@ -2,6 +2,7 @@ from datetime import datetime
 from http import HTTPStatus
 
 import asyncpg
+from tornado.escape import json_decode
 from tornado.web import RequestHandler, HTTPError
 
 MAX_ENTRIES_PER_PAGE = 5
@@ -66,3 +67,33 @@ class GuestbookHandler(RequestHandler):
                           page=page,
                           total_entries=total_entries,
                           MAX_ENTRIES_PER_PAGE=MAX_ENTRIES_PER_PAGE)
+
+
+class GuestbookAPIHandler(RequestHandler):
+    def initialize(self, repo: EntryRepository):
+        self.__repo = repo
+
+    async def post(self):
+        data: dict[str, str] = json_decode(self.request.body)
+        if not data.get('name') or not data.get('email') or not data.get('message'):
+            raise HTTPError(HTTPStatus.BAD_REQUEST, 'missing required fields')
+        await self.__repo.add_entry(data['name'], data['email'], data['message'])
+        self.set_status(HTTPStatus.CREATED)
+
+    async def get(self):
+        page = int(self.get_query_argument('page', '1'))
+        if page < 1:
+            raise HTTPError(HTTPStatus.BAD_REQUEST, 'invalid page')
+        total_entries = await self.__repo.count_entries()
+        entries = await self.__repo.get_entries(page)
+        self.write({
+            'page': page,
+            'totalEntries': total_entries,
+            'entries': [{
+                'id': x.id,
+                'name': x.name,
+                'email': x.email,
+                'message': x.message,
+                'posted': x.posted.isoformat(),
+            } for x in entries]
+        })
